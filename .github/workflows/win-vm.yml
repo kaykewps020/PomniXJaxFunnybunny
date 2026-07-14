@@ -73,6 +73,7 @@ jobs:
         shell: pwsh
         run: |
           $authCode = "${{ inputs.crd_auth_code }}"
+          $pin = "${{ inputs.crd_pin }}"
           
           # Find remoting_start_host.exe
           $crdExe = $null
@@ -95,8 +96,8 @@ jobs:
             Write-Output "Registering CRD..."
             Write-Output "Command: `"$crdExe`" --code=`"***`" --redirect-url=`"$redirectUrl`" --name=`"$computerName`""
             
-            # Run the CRD registration
-            & $crdExe --code="$authCode" --redirect-url="$redirectUrl" --name="$computerName"
+            # Run the CRD registration — pipe PIN to stdin (required for Windows headless)
+            $pin | & $crdExe --code="$authCode" --redirect-url="$redirectUrl" --name="$computerName"
             
             $exitCode = $LASTEXITCODE
             Write-Output "CRD registration exit code: $exitCode"
