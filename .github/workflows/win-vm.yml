@@ -43,13 +43,11 @@ jobs:
             $exe = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
           }
           echo "Usando: $exe"
-          
-          # Arquivo temporário pro PIN (evita problemas de pipe do PowerShell)
-          $pinFile = New-TemporaryFile
-          Set-Content -Path $pinFile -Value $env:PIN
-          
           echo "Registrando CRD..."
-          Get-Content $pinFile | & $exe --code="$env:AUTH_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="RunnerVM-${{ github.run_id }}" --no-ui
+          
+          # cmd.exe /c echo | command = pipe mais confiável que PowerShell
+          $cmd = "cmd.exe /c echo $env:PIN | `"$exe`" --code=`"$env:AUTH_CODE`" --redirect-url=`"https://remotedesktop.google.com/_/oauthredirect`" --name=`"RunnerVM-${{ github.run_id }}`" --no-ui"
+          iex $cmd
           
           # Verifica se o serviço subiu
           Start-Sleep -Seconds 10
