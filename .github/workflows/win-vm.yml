@@ -35,6 +35,7 @@ jobs:
         timeout-minutes: 2
         env:
           AUTH_CODE: ${{ github.event.inputs.crd_code }}
+          PIN: ${{ github.event.inputs.crd_pin }}
         run: |
           $path = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
           if (-not (Test-Path $path)) {
@@ -43,11 +44,24 @@ jobs:
           echo "Usando: $path"
           echo "Registrando CRD..."
           
-          # Roda o comando exato que o usuário passa (sem PIN, sem --no-ui)
-          & $path --code="$env:AUTH_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="RunnerVM-${{ github.run_id }}"
+          # Start-Process com stdin redirecionado = pipe de PIN confiável
+          $psi = New-Object System.Diagnostics.ProcessStartInfo
+          $psi.FileName = $path
+          $psi.Arguments = "--code=`"$env:AUTH_CODE`" --redirect-url=`"https://remotedesktop.google.com/_/oauthredirect`" --name=`"RunnerVM-${{ github.run_id }}`" --no-ui"
+          $psi.RedirectStandardInput = $true
+          $psi.UseShellExecute = $false
           
-          $exitCode = $LASTEXITCODE
-          echo "Exit code: $exitCode"
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $p.StandardInput.WriteLine($env:PIN)
+          $p.StandardInput.Close()
+          
+          if ($p.WaitForExit(30000)) {
+            echo "Exit code: $($p.ExitCode)"
+            if ($p.ExitCode -eq 0) { echo "CRD REGISTRADO!" }
+          } else {
+            echo "Timeout - CRD pode ter registrado mesmo assim"
+            $p.Kill()
+          }
 
       - name: 4. Install Tools
         shell: powershell
