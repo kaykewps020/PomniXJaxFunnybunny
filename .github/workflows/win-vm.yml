@@ -1,162 +1,58 @@
-name: Windows VM RDP
+name: Remote Desktop Runner
 
 on:
   workflow_dispatch:
     inputs:
-      crd_auth_code:
-        description: 'CRD Authorization Code (https://remotedesktop.google.com/headless)'
+      crd_code:
+        description: 'Chrome Remote Desktop Auth Code'
         required: true
-        type: string
       crd_pin:
-        description: '6-digit PIN for CRD access'
+        description: 'PIN (6 dígitos)'
         required: true
-        type: string
-      duration_hours:
-        description: 'Hours to keep alive (max 6)'
-        required: false
-        default: '3'
-        type: string
 
 jobs:
-  windows-vm:
+  build:
     runs-on: windows-latest
-    timeout-minutes: 432
+    timeout-minutes: 330 # 5h30m
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set Timezone
-        shell: pwsh
-        run: Set-TimeZone -Id "E. South America Standard Time"
-
-      - name: Disable Windows Defender
-        shell: pwsh
+      - name: 1. Setup Environment
+        shell: powershell
         run: |
-          Set-MpPreference -DisableRealtimeMonitoring $true
-          Set-MpPreference -DisableBehaviorMonitoring $true
-          Set-MpPreference -DisableBlockAtFirstSeen $true
-          Set-MpPreference -DisableIOAVProtection $true
-          Set-MpPreference -DisableScriptScanning $true
-          Write-Output "Defender off"
-
-      - name: Enable RDP
-        shell: pwsh
-        run: |
-          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          Set-Timezone -Name "E. South America Standard Time"
+          # Desativar Defender
+          Set-MpPreference -DisableRealtimeMonitoring $true -DisableBehaviorMonitoring $true -DisableBlockAtFirstSeen $true -DisableIOAVProtection $true -DisableScriptScanning $true
+          # Habilitar RDP
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-
-      - name: Install Chrome Remote Desktop
-        shell: pwsh
+          
+      - name: 2. Install Tools
+        shell: powershell
         run: |
-          $ProgressPreference = 'SilentlyContinue'
-          # Download CRD host MSI for Windows
-          Invoke-WebRequest -Uri "https://dl.google.com/dl/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "$env:TEMP\crd.msi"
-          
-          # Install CRD host silently
-          Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$env:TEMP\crd.msi`" /quiet /norestart" -Wait
-          Start-Sleep 10
-          Write-Output "CRD Host installed"
-          
-          # Verify installation
-          $crdPaths = @(
-            "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion",
-            "${env:ProgramFiles}\Google\Chrome Remote Desktop\CurrentVersion"
-          )
-          foreach ($p in $crdPaths) {
-            if (Test-Path $p) {
-              Write-Output "CRD found at: $p"
-              Get-ChildItem $p
-            }
-          }
+          choco install vscode firefox 7zip notepadplusplus -y --no-progress
 
-      - name: Setup CRD Headless
-        shell: pwsh
+      - name: 3. Install Chrome Remote Desktop
+        shell: powershell
         run: |
-          $authCode = "${{ inputs.crd_auth_code }}"
-          $pin = "${{ inputs.crd_pin }}"
-          
-          # Find remoting_start_host.exe
-          $crdExe = $null
-          $crdPaths = @(
-            "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe",
-            "${env:ProgramFiles}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
-          )
-          foreach ($p in $crdPaths) {
-            if (Test-Path $p) {
-              $crdExe = $p
-              break
-            }
-          }
-          
-          if ($crdExe) {
-            Write-Output "Found CRD host at: $crdExe"
-            $computerName = $env:COMPUTERNAME
-            $redirectUrl = "https://remotedesktop.google.com/_/oauthredirect"
-            
-            Write-Output "Registering CRD..."
-            Write-Output "Command: `"$crdExe`" --code=`"***`" --redirect-url=`"$redirectUrl`" --name=`"$computerName`""
-            
-            # Run the CRD registration — pipe PIN to stdin (required for Windows headless)
-            $pin | & $crdExe --code="$authCode" --redirect-url="$redirectUrl" --name="$computerName"
-            
-            $exitCode = $LASTEXITCODE
-            Write-Output "CRD registration exit code: $exitCode"
-            
-            if ($exitCode -eq 0) {
-              Write-Output "CRD registered SUCCESSFULLY!"
-            } else {
-              Write-Output "CRD registration may have failed - check logs above"
-            }
-          } else {
-            Write-Output "CRD remoting_start_host.exe NOT FOUND!"
-            Write-Output "Searching entire drive..."
-            Get-ChildItem -Path "$env:ProgramFiles" -Recurse -Filter "*remoting*" -ErrorAction SilentlyContinue | Select-Object FullName
-            Get-ChildItem -Path "${env:ProgramFiles(x86)}" -Recurse -Filter "*remoting*" -ErrorAction SilentlyContinue | Select-Object FullName
-          }
+          Invoke-WebRequest -Uri "https://dl.google.com/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
+          Start-Process msiexec.exe -ArgumentList '/i crd.msi /quiet /norestart' -Wait
 
-      - name: Install Tools (Chocolatey)
-        shell: pwsh
+      - name: 4. Register CRD (Headless)
+        shell: powershell
+        env:
+          AUTH_CODE: ${{ github.event.inputs.crd_code }}
+          PIN: ${{ github.event.inputs.crd_pin }}
         run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          choco install -y vscode firefox 7zip notepadplusplus
+          $path = "C:\Program Files (x86)\Google\Chrome Remote Desktop\Application\remoting_start_host.exe"
+          # O segredo para não travar: passar o PIN via stdin usando echo e pipe direto
+          echo $env:PIN | & $path --code="$env:AUTH_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="RunnerVM-${{ github.run_id }}" --no-ui
 
-      - name: Set Admin Password & Show Info
-        shell: pwsh
+      - name: 5. Keep Alive
+        shell: powershell
         run: |
-          $password = "KaufyVM@" + (Get-Random -Maximum 99999).ToString("00000")
-          $secure = ConvertTo-SecureString $password -AsPlainText -Force
-          Set-LocalUser -Name "Administrator" -Password $secure
-          
-          Write-Output "=========================================="
-          Write-Output "WINDOWS VM READY"
-          Write-Output "=========================================="
-          Write-Output ""
-          Write-Output "1. Go to: https://remotedesktop.google.com/access"
-          Write-Output "2. Log in with the same Google account"
-          Write-Output "3. Click on 'kaufy-win-vm'"
-          Write-Output "4. Enter PIN: ${{ inputs.crd_pin }}"
-          Write-Output ""
-          Write-Output "Admin Password: $password"
-          Write-Output ""
-          Write-Output "Alternatively, connect via RDP:"
-          Write-Output "  IP: localhost (only works locally)"
-          Write-Output "  User: Administrator"
-          Write-Output "  Pass: $password"
-          Write-Output "=========================================="
-
-      - name: Keep Alive
-        shell: pwsh
-        run: |
-          $hours = [int]("${{ inputs.duration_hours }}")
-          $end = (Get-Date).AddHours($hours)
-          Write-Output "VM live until: $end"
-          
-          while ((Get-Date) -lt $end) {
-            $remaining = ($end - (Get-Date)).TotalMinutes
-            Write-Output "[$(Get-Date -Format HH:mm:ss)] CRD active — $([math]::Round($remaining)) min remaining"
+          $timeout = 330 # minutos
+          $start = Get-Date
+          Write-Host "Iniciado em: $start"
+          while ((Get-Date) -lt $start.AddMinutes($timeout)) {
+            Write-Host "Runner ativo... Restam $(($start.AddMinutes($timeout) - (Get-Date)).ToString('hh\:mm\:ss'))"
             Start-Sleep -Seconds 120
           }
-          
-          Write-Output "Time's up! VM shutting down."
