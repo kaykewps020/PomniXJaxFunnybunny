@@ -33,7 +33,7 @@ jobs:
       - name: 3. Install Chrome Remote Desktop
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://dl.google.com/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
+          Invoke-WebRequest -Uri "https://dl.google.com/dl/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
           Start-Process msiexec.exe -ArgumentList '/i crd.msi /quiet /norestart' -Wait
 
       - name: 4. Register CRD (Headless)
