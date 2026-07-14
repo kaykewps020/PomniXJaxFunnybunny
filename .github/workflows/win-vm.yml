@@ -45,87 +45,72 @@ jobs:
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-      - name: Install Chrome
-        shell: pwsh
-        run: |
-          $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest -Uri "https://dl.google.com/chrome/install/latest/chrome_installer.exe" -OutFile "$env:TEMP\chrome_installer.exe"
-          Start-Process -FilePath "$env:TEMP\chrome_installer.exe" -ArgumentList "/silent /install" -Wait
-          Write-Output "Chrome installed"
-
       - name: Install Chrome Remote Desktop
         shell: pwsh
         run: |
           $ProgressPreference = 'SilentlyContinue'
-          # Download CRD host installer
-          Invoke-WebRequest -Uri "https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb" -OutFile "$env:TEMP\crd.deb"
-          Wait-Debugger
-          # For Windows, the correct URL is different:
+          # Download CRD host MSI for Windows
           Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chrome-remote-desktop-host.msi" -OutFile "$env:TEMP\crd.msi"
           
-          # Install CRD host
+          # Install CRD host silently
           Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$env:TEMP\crd.msi`" /quiet /norestart" -Wait
-          Start-Sleep 5
+          Start-Sleep 10
           Write-Output "CRD Host installed"
+          
+          # Verify installation
+          $crdPaths = @(
+            "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion",
+            "${env:ProgramFiles}\Google\Chrome Remote Desktop\CurrentVersion"
+          )
+          foreach ($p in $crdPaths) {
+            if (Test-Path $p) {
+              Write-Output "CRD found at: $p"
+              Get-ChildItem $p
+            }
+          }
 
       - name: Setup CRD Headless
         shell: pwsh
         run: |
           $authCode = "${{ inputs.crd_auth_code }}"
-          $pin = "${{ inputs.crd_pin }}"
           
-          # CRD headless registration
-          # The CRD service needs to register with the auth code
-          $programFiles = ${env:ProgramFiles}
-          $crdPath = Join-Path $programFiles "Chrome Remote Desktop"
-          
-          if (Test-Path $crdPath) {
-            Write-Output "CRD found at $crdPath"
-            Get-ChildItem $crdPath
+          # Find remoting_start_host.exe
+          $crdExe = $null
+          $crdPaths = @(
+            "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe",
+            "${env:ProgramFiles}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
+          )
+          foreach ($p in $crdPaths) {
+            if (Test-Path $p) {
+              $crdExe = $p
+              break
+            }
           }
           
-          # Register CRD with auth code
-          # The host executable is usually in Program Files
-          $hostExe = Get-ChildItem -Path $programFiles -Recurse -Filter "chromoting-host.exe" | Select-Object -First 1
-          
-          if ($hostExe) {
-            Write-Output "Found host at: $($hostExe.FullName)"
-            # Register with Google using the auth code
-            & $hostExe.FullName --host-name="kaufy-win-vm" --auth-code="$authCode" --pin="$pin"
-            Write-Output "CRD registered successfully"
-          } else {
-            Write-Output "CRD host binary not found, trying alternative paths"
-            # Try common locations
-            $paths = @(
-              "$env:LOCALAPPDATA\Google\Chrome Remote Desktop",
-              "$env:ProgramData\Google\Chrome Remote Desktop",
-              "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop"
-            )
-            foreach ($p in $paths) {
-              if (Test-Path $p) {
-                Write-Output "Found CRD at: $p"
-                Get-ChildItem $p
-              }
+          if ($crdExe) {
+            Write-Output "Found CRD host at: $crdExe"
+            $computerName = $env:COMPUTERNAME
+            $redirectUrl = "https://remotedesktop.google.com/_/oauthredirect"
+            
+            Write-Output "Registering CRD..."
+            Write-Output "Command: `"$crdExe`" --code=`"***`" --redirect-url=`"$redirectUrl`" --name=`"$computerName`""
+            
+            # Run the CRD registration
+            & $crdExe --code="$authCode" --redirect-url="$redirectUrl" --name="$computerName"
+            
+            $exitCode = $LASTEXITCODE
+            Write-Output "CRD registration exit code: $exitCode"
+            
+            if ($exitCode -eq 0) {
+              Write-Output "CRD registered SUCCESSFULLY!"
+            } else {
+              Write-Output "CRD registration may have failed - check logs above"
             }
-            
-            # Alternative: use the CRD setup via registry
-            # The auth code can be applied via the Windows CRD client
-            Write-Output "Attempting CRD registration via direct method..."
-            
-            # Create the config directory
-            $configDir = "$env:ProgramData\Google\Chrome Remote Desktop"
-            New-Item -ItemType Directory -Force -Path $configDir | Out-Null
-            
-            # Write the auth config
-            $config = @{
-              host_id = (New-Guid).Guid
-              host_name = "kaufy-win-vm"
-              auth_code = $authCode
-              pin = $pin
-            } | ConvertTo-Json
-            
-            Set-Content -Path "$configDir\host.json" -Value $config
-            Write-Output "Config written"
+          } else {
+            Write-Output "CRD remoting_start_host.exe NOT FOUND!"
+            Write-Output "Searching entire drive..."
+            Get-ChildItem -Path "$env:ProgramFiles" -Recurse -Filter "*remoting*" -ErrorAction SilentlyContinue | Select-Object FullName
+            Get-ChildItem -Path "${env:ProgramFiles(x86)}" -Recurse -Filter "*remoting*" -ErrorAction SilentlyContinue | Select-Object FullName
           }
 
       - name: Install Tools (Chocolatey)
