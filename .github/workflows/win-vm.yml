@@ -35,28 +35,18 @@ jobs:
         timeout-minutes: 2
         env:
           AUTH_CODE: ${{ github.event.inputs.crd_code }}
-          PIN: ${{ github.event.inputs.crd_pin }}
         run: |
-          $dir = "C:\Program Files (x86)\Google\Chrome Remote Desktop\Application"
-          $exe = "$dir\remoting_start_host.exe"
-          if (-not (Test-Path $exe)) {
-            $exe = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
-          }
-          echo "Usando: $exe"
+          $exe = "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
           echo "Registrando CRD..."
+          & $exe --code="$env:AUTH_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name=$Env:COMPUTERNAME
           
-          # cmd.exe /c echo | command = pipe mais confiável que PowerShell
-          $cmd = "cmd.exe /c echo $env:PIN | `"$exe`" --code=`"$env:AUTH_CODE`" --redirect-url=`"https://remotedesktop.google.com/_/oauthredirect`" --name=`"RunnerVM-${{ github.run_id }}`" --no-ui"
-          iex $cmd
-          
-          # Verifica se o serviço subiu
           Start-Sleep -Seconds 10
           $service = Get-Service "chromoting" -ErrorAction SilentlyContinue
           if ($service.Status -ne 'Running') {
-             Write-Error "O serviço do Chrome Remote Desktop não iniciou corretamente."
+             Write-Error "Serviço chromoting não está rodando"
              exit 1
           }
-          echo "CRD REGISTRADO E SERVIÇO ATIVO!"
+          echo "CRD REGISTRADO!"
 
       - name: 4. Install Tools
         shell: powershell
