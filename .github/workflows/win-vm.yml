@@ -24,7 +24,8 @@ jobs:
       - name: 2. Instalação do CRD
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://dl.google.com/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
+          # URL atualizada com /edgedl/ para evitar o erro 404
+          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
           Start-Process msiexec.exe -ArgumentList '/i crd.msi /quiet /norestart' -Wait
 
       - name: 3. Registro do Host (Correção Definitiva)
@@ -36,7 +37,7 @@ jobs:
           @echo off
           REM O uso do CMD é obrigatório aqui. 
           REM Note que NÃO há espaço entre o %PIN% e o símbolo de pipe (|). Isso é proposital.
-          echo %PIN%| "C:\Program Files (x86)\Google\Chrome Remote Desktop\Application\remoting_start_host.exe" --code="%AUTH_CODE%" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="RunnerVM-%GITHUB_RUN_ID%"
+          echo %PIN%| "%PROGRAMFILES(X86)%\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" --code="%AUTH_CODE%" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="%COMPUTERNAME%"
 
       - name: 4. Keep Alive
         shell: powershell
