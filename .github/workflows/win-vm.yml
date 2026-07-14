@@ -1,13 +1,12 @@
-name: Remote Desktop Runner
-
+name: CRD Runner
 on:
   workflow_dispatch:
     inputs:
       crd_code:
-        description: 'Chrome Remote Desktop Auth Code'
+        description: 'Cole apenas o código (ex: 4/0A...)'
         required: true
       crd_pin:
-        description: 'PIN (6 dígitos)'
+        description: 'PIN de 6 números'
         required: true
 
 jobs:
@@ -15,52 +14,37 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 330
     steps:
-      - name: 1. Setup Environment
+      - name: 1. Setup Sistema
         shell: powershell
         run: |
           Set-Timezone -Name "E. South America Standard Time"
-          Set-MpPreference -DisableRealtimeMonitoring $true -DisableBehaviorMonitoring $true -DisableBlockAtFirstSeen $true -DisableIOAVProtection $true -DisableScriptScanning $true
+          Set-MpPreference -DisableRealtimeMonitoring $true
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-      - name: 2. Install Chrome Remote Desktop
+      - name: 2. Instalação do CRD
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://dl.google.com/dl/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
+          Invoke-WebRequest -Uri "https://dl.google.com/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
           Start-Process msiexec.exe -ArgumentList '/i crd.msi /quiet /norestart' -Wait
-          Write-Output "CRD instalado"
 
-      - name: 3. Register CRD (Headless)
-        shell: powershell
-        timeout-minutes: 2
+      - name: 3. Registro do Host (Correção Definitiva)
+        shell: cmd
         env:
           AUTH_CODE: ${{ github.event.inputs.crd_code }}
+          PIN: ${{ github.event.inputs.crd_pin }}
         run: |
-          $exe = "${Env:PROGRAMFILES(X86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
-          echo "Registrando CRD..."
-          & $exe --code="$env:AUTH_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name=$Env:COMPUTERNAME
-          
-          Start-Sleep -Seconds 10
-          $service = Get-Service "chromoting" -ErrorAction SilentlyContinue
-          if ($service.Status -ne 'Running') {
-             Write-Error "Serviço chromoting não está rodando"
-             exit 1
-          }
-          echo "CRD REGISTRADO!"
+          @echo off
+          REM O uso do CMD é obrigatório aqui. 
+          REM Note que NÃO há espaço entre o %PIN% e o símbolo de pipe (|). Isso é proposital.
+          echo %PIN%| "C:\Program Files (x86)\Google\Chrome Remote Desktop\Application\remoting_start_host.exe" --code="%AUTH_CODE%" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="RunnerVM-%GITHUB_RUN_ID%"
 
-      - name: 4. Install Tools
+      - name: 4. Keep Alive
         shell: powershell
         run: |
-          choco install vscode firefox 7zip notepadplusplus -y --no-progress
-          Write-Output "Tools instaladas"
-
-      - name: 5. Keep Alive
-        shell: powershell
-        run: |
-          $timeout = 330
-          $start = Get-Date
-          Write-Host "Iniciado em: $start"
-          while ((Get-Date) -lt $start.AddMinutes($timeout)) {
-            Write-Host "Runner ativo... Restam $(($start.AddMinutes($timeout) - (Get-Date)).ToString('hh\:mm\:ss'))"
-            Start-Sleep -Seconds 120
+          Write-Host "CRD Registrado! Você já deve conseguir ver a máquina no site."
+          $i = 0
+          while($i -lt 330) {
+            Start-Sleep -Seconds 60
+            $i++
+            if ($i % 15 -eq 0) { Write-Host "Runner ativo há $i minutos..." }
           }
