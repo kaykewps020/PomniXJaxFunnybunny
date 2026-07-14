@@ -37,31 +37,28 @@ jobs:
           AUTH_CODE: ${{ github.event.inputs.crd_code }}
           PIN: ${{ github.event.inputs.crd_pin }}
         run: |
-          $path = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
-          if (-not (Test-Path $path)) {
-            $path = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\Application\remoting_start_host.exe"
+          $dir = "C:\Program Files (x86)\Google\Chrome Remote Desktop\Application"
+          $exe = "$dir\remoting_start_host.exe"
+          if (-not (Test-Path $exe)) {
+            $exe = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
           }
-          echo "Usando: $path"
+          echo "Usando: $exe"
+          
+          # Arquivo temporário pro PIN (evita problemas de pipe do PowerShell)
+          $pinFile = New-TemporaryFile
+          Set-Content -Path $pinFile -Value $env:PIN
+          
           echo "Registrando CRD..."
+          Get-Content $pinFile | & $exe --code="$env:AUTH_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="RunnerVM-${{ github.run_id }}" --no-ui
           
-          # Start-Process com stdin redirecionado = pipe de PIN confiável
-          $psi = New-Object System.Diagnostics.ProcessStartInfo
-          $psi.FileName = $path
-          $psi.Arguments = "--code=`"$env:AUTH_CODE`" --redirect-url=`"https://remotedesktop.google.com/_/oauthredirect`" --name=`"RunnerVM-${{ github.run_id }}`" --no-ui"
-          $psi.RedirectStandardInput = $true
-          $psi.UseShellExecute = $false
-          
-          $p = [System.Diagnostics.Process]::Start($psi)
-          $p.StandardInput.WriteLine($env:PIN)
-          $p.StandardInput.Close()
-          
-          if ($p.WaitForExit(30000)) {
-            echo "Exit code: $($p.ExitCode)"
-            if ($p.ExitCode -eq 0) { echo "CRD REGISTRADO!" }
-          } else {
-            echo "Timeout - CRD pode ter registrado mesmo assim"
-            $p.Kill()
+          # Verifica se o serviço subiu
+          Start-Sleep -Seconds 10
+          $service = Get-Service "chromoting" -ErrorAction SilentlyContinue
+          if ($service.Status -ne 'Running') {
+             Write-Error "O serviço do Chrome Remote Desktop não iniciou corretamente."
+             exit 1
           }
+          echo "CRD REGISTRADO E SERVIÇO ATIVO!"
 
       - name: 4. Install Tools
         shell: powershell
