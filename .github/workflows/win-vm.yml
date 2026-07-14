@@ -42,7 +42,11 @@ jobs:
           AUTH_CODE: ${{ github.event.inputs.crd_code }}
           PIN: ${{ github.event.inputs.crd_pin }}
         run: |
-          $path = "C:\Program Files (x86)\Google\Chrome Remote Desktop\Application\remoting_start_host.exe"
+          # Tenta CurrentVersion, fallback pra Application
+          $path = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
+          if (-not (Test-Path $path)) {
+            $path = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\Application\remoting_start_host.exe"
+          }
           # O segredo para não travar: passar o PIN via stdin usando echo e pipe direto
           echo $env:PIN | & $path --code="$env:AUTH_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="RunnerVM-${{ github.run_id }}" --no-ui
 
