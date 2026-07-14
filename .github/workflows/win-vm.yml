@@ -35,28 +35,19 @@ jobs:
         timeout-minutes: 2
         env:
           AUTH_CODE: ${{ github.event.inputs.crd_code }}
-          PIN: ${{ github.event.inputs.crd_pin }}
         run: |
           $path = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
           if (-not (Test-Path $path)) {
             $path = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\Application\remoting_start_host.exe"
           }
           echo "Usando: $path"
+          echo "Registrando CRD..."
           
-          # Roda com job pra não travar se o comando hungar
-          $job = Start-Job -ScriptBlock {
-            param($p, $c, $u, $n, $pin)
-            $pin | & $p --code=$c --redirect-url=$u --name=$n --no-ui
-          } -ArgumentList $path, $env:AUTH_CODE, "https://remotedesktop.google.com/_/oauthredirect", "RunnerVM-${{ github.run_id }}", $env:PIN
+          # Roda o comando exato que o usuário passa (sem PIN, sem --no-ui)
+          & $path --code="$env:AUTH_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="RunnerVM-${{ github.run_id }}"
           
-          if (Wait-Job $job -Timeout 30) {
-            Receive-Job $job
-            echo "CRD registration completed"
-          } else {
-            Stop-Job $job
-            echo "CRD registration timed out (30s) - continuando mesmo assim"
-          }
-          Remove-Job $job
+          $exitCode = $LASTEXITCODE
+          echo "Exit code: $exitCode"
 
       - name: 4. Install Tools
         shell: powershell
