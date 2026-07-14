@@ -50,7 +50,7 @@ jobs:
         run: |
           $ProgressPreference = 'SilentlyContinue'
           # Download CRD host MSI for Windows
-          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chrome-remote-desktop-host.msi" -OutFile "$env:TEMP\crd.msi"
+          Invoke-WebRequest -Uri "https://dl.google.com/dl/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "$env:TEMP\crd.msi"
           
           # Install CRD host silently
           Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$env:TEMP\crd.msi`" /quiet /norestart" -Wait
