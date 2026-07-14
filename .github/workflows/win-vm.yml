@@ -13,47 +13,47 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 330 # 5h30m
+    timeout-minutes: 330
     steps:
       - name: 1. Setup Environment
         shell: powershell
         run: |
           Set-Timezone -Name "E. South America Standard Time"
-          # Desativar Defender
           Set-MpPreference -DisableRealtimeMonitoring $true -DisableBehaviorMonitoring $true -DisableBlockAtFirstSeen $true -DisableIOAVProtection $true -DisableScriptScanning $true
-          # Habilitar RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          
-      - name: 2. Install Tools
-        shell: powershell
-        run: |
-          choco install vscode firefox 7zip notepadplusplus -y --no-progress
 
-      - name: 3. Install Chrome Remote Desktop
+      - name: 2. Install Chrome Remote Desktop
         shell: powershell
         run: |
           Invoke-WebRequest -Uri "https://dl.google.com/dl/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
           Start-Process msiexec.exe -ArgumentList '/i crd.msi /quiet /norestart' -Wait
+          Write-Output "CRD instalado"
 
-      - name: 4. Register CRD (Headless)
+      - name: 3. Register CRD (Headless)
         shell: powershell
         env:
           AUTH_CODE: ${{ github.event.inputs.crd_code }}
           PIN: ${{ github.event.inputs.crd_pin }}
         run: |
-          # Tenta CurrentVersion, fallback pra Application
           $path = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe"
           if (-not (Test-Path $path)) {
             $path = "${env:ProgramFiles(x86)}\Google\Chrome Remote Desktop\Application\remoting_start_host.exe"
           }
-          # O segredo para não travar: passar o PIN via stdin usando echo e pipe direto
+          echo "Usando: $path"
           echo $env:PIN | & $path --code="$env:AUTH_CODE" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="RunnerVM-${{ github.run_id }}" --no-ui
+          echo "CRD registrado!"
+
+      - name: 4. Install Tools
+        shell: powershell
+        run: |
+          choco install vscode firefox 7zip notepadplusplus -y --no-progress
+          Write-Output "Tools instaladas"
 
       - name: 5. Keep Alive
         shell: powershell
         run: |
-          $timeout = 330 # minutos
+          $timeout = 330
           $start = Get-Date
           Write-Host "Iniciado em: $start"
           while ((Get-Date) -lt $start.AddMinutes($timeout)) {
