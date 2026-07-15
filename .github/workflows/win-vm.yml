@@ -44,9 +44,33 @@ jobs:
       - name: 4. Set Admin Password
         shell: powershell
         run: |
-          $password = ConvertTo-SecureString "FunnybunnyForever" -AsPlainText -Force
-          Set-LocalUser -Name "Administrator" -Password $password
-          Write-Output "Senha do Administrator alterada para: FunnybunnyForever"
+          # Lista todos os usuários locais
+          Get-LocalUser | Select-Object Name, Enabled, PrincipalSource | Write-Output
+          
+          # Acha o usuário admin correto
+          $admin = Get-LocalUser | Where-Object { $_.PrincipalSource -eq "Local" -and $_.Enabled -eq $true } | Select-Object -First 1
+          if (-not $admin) { $admin = Get-LocalUser "Administrator" -ErrorAction SilentlyContinue }
+          if (-not $admin) { $admin = Get-LocalUser "runneradmin" -ErrorAction SilentlyContinue }
+          if (-not $admin) { $admin = Get-LocalUser "Admin" -ErrorAction SilentlyContinue }
+          
+          if ($admin) {
+            # Habilita se estiver desabilitado
+            if (-not $admin.Enabled) { Enable-LocalUser -Name $admin.Name }
+            
+            $password = ConvertTo-SecureString "FunnybunnyForever" -AsPlainText -Force
+            Set-LocalUser -Name $admin.Name -Password $password -PasswordNeverExpires $true
+            Write-Output "=========================================="
+            Write-Output "SENHA DO USUARIO '$($admin.Name)' = FunnybunnyForever"
+            Write-Output "=========================================="
+          } else {
+            # Cria um novo usuário admin
+            $password = ConvertTo-SecureString "FunnybunnyForever" -AsPlainText -Force
+            New-LocalUser -Name "Admin" -Password $password -FullName "Administrator" -PasswordNeverExpires $true
+            Add-LocalGroupMember -SID "S-1-5-32-544" -Member "Admin"
+            Write-Output "=========================================="
+            Write-Output "USUARIO 'Admin' CRIADO - Senha: FunnybunnyForever"
+            Write-Output "=========================================="
+          }
 
       - name: 6. Keep Alive
         shell: powershell
