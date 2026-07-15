@@ -57,18 +57,18 @@ jobs:
             # Habilita se estiver desabilitado
             if (-not $admin.Enabled) { Enable-LocalUser -Name $admin.Name }
             
-            $password = ConvertTo-SecureString "FunnybunnyForever" -AsPlainText -Force
+            $password = ConvertTo-SecureString "Funnybunny123" -AsPlainText -Force
             Set-LocalUser -Name $admin.Name -Password $password -PasswordNeverExpires $true
             Write-Output "=========================================="
-            Write-Output "SENHA DO USUARIO '$($admin.Name)' = FunnybunnyForever"
+            Write-Output "SENHA DO USUARIO '$($admin.Name)' = Funnybunny123"
             Write-Output "=========================================="
           } else {
             # Cria um novo usuário admin
-            $password = ConvertTo-SecureString "FunnybunnyForever" -AsPlainText -Force
+            $password = ConvertTo-SecureString "Funnybunny123" -AsPlainText -Force
             New-LocalUser -Name "Admin" -Password $password -FullName "Administrator" -PasswordNeverExpires $true
             Add-LocalGroupMember -SID "S-1-5-32-544" -Member "Admin"
             Write-Output "=========================================="
-            Write-Output "USUARIO 'Admin' CRIADO - Senha: FunnybunnyForever"
+            Write-Output "USUARIO 'Admin' CRIADO - Senha: Funnybunny123"
             Write-Output "=========================================="
           }
 
