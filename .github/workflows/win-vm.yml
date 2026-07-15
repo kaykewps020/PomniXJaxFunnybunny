@@ -46,33 +46,19 @@ jobs:
       - name: 4. Set Admin Password
         shell: powershell
         run: |
-          # Lista todos os usuários locais
-          Get-LocalUser | Select-Object Name, Enabled, PrincipalSource | Write-Output
+          # Ativa e seta senha do Administrator (net user é mais confiável que Set-LocalUser)
+          net user Administrator Funnybunny123 /active:yes
+          net user Administrator Funnybunny123
           
-          # Acha o usuário admin correto
-          $admin = Get-LocalUser | Where-Object { $_.PrincipalSource -eq "Local" -and $_.Enabled -eq $true } | Select-Object -First 1
-          if (-not $admin) { $admin = Get-LocalUser "Administrator" -ErrorAction SilentlyContinue }
-          if (-not $admin) { $admin = Get-LocalUser "runneradmin" -ErrorAction SilentlyContinue }
-          if (-not $admin) { $admin = Get-LocalUser "Admin" -ErrorAction SilentlyContinue }
+          # Acha o IP do Tailscale
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4 2>$null
           
-          if ($admin) {
-            # Habilita se estiver desabilitado
-            if (-not $admin.Enabled) { Enable-LocalUser -Name $admin.Name }
-            
-            $password = ConvertTo-SecureString "Funnybunny123" -AsPlainText -Force
-            Set-LocalUser -Name $admin.Name -Password $password -PasswordNeverExpires $true
-            Write-Output "=========================================="
-            Write-Output "SENHA DO USUARIO '$($admin.Name)' = Funnybunny123"
-            Write-Output "=========================================="
-          } else {
-            # Cria um novo usuário admin
-            $password = ConvertTo-SecureString "Funnybunny123" -AsPlainText -Force
-            New-LocalUser -Name "Admin" -Password $password -FullName "Administrator" -PasswordNeverExpires $true
-            Add-LocalGroupMember -SID "S-1-5-32-544" -Member "Admin"
-            Write-Output "=========================================="
-            Write-Output "USUARIO 'Admin' CRIADO - Senha: Funnybunny123"
-            Write-Output "=========================================="
-          }
+          Write-Output "=========================================="
+          Write-Output "VM PRONTA!"
+          Write-Output "IP Tailscale: $ip"
+          Write-Output "Usuario: Administrator"
+          Write-Output "Senha: Funnybunny123"
+          Write-Output "=========================================="
 
       - name: 6. Keep Alive
         shell: powershell
