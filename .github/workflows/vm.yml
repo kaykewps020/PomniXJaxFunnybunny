@@ -24,8 +24,10 @@ jobs:
           Start-Service sshd
           Set-Service -Name sshd -StartupType 'Automatic'
           New-NetFirewallRule -DisplayName "SSH" -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
-          net user Administrator Funnybunny123 /active:yes
-          net user Administrator Funnybunny123
+          # Cria usuário novo (Administrator pode não existir no WS2025)
+          net user vmadmin Funnybunny123 /add
+          net localgroup Administradores vmadmin /add
+          net localgroup "Administrators" vmadmin /add
 
       - name: Instalar Bore
         shell: powershell
@@ -72,7 +74,7 @@ jobs:
           
           Write-Output "=========================================="
           Write-Output "VM PRONTA! CONECTE VIA SSH:"
-          Write-Output "  ssh Administrator@$hostVal -p $port"
+          Write-Output "  ssh vmadmin@$hostVal -p $port"
           Write-Output "  Senha: Funnybunny123"
           Write-Output "=========================================="
           
@@ -97,10 +99,10 @@ jobs:
               "title": "VM SSH Pronta!",
               "color": 3066993,
               "fields": [
-                { "name": "SSH Command", "value": "ssh Administrator@$hostVal -p $portVal", "inline": false },
+                { "name": "SSH Command", "value": "ssh vmadmin@$hostVal -p $portVal", "inline": false },
                 { "name": "Host", "value": "$hostVal", "inline": true },
                 { "name": "Porta", "value": "$portVal", "inline": true },
-                { "name": "Usuario", "value": "Administrator", "inline": true },
+                { "name": "Usuario", "value": "vmadmin", "inline": true },
                 { "name": "Senha", "value": "Funnybunny123", "inline": true },
                 { "name": "Workflow", "value": "[Abrir](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": true }
               ]
