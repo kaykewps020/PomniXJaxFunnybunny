@@ -1,12 +1,9 @@
-name: CRD Runner
+name: Tailscale VM + RDP
 on:
   workflow_dispatch:
     inputs:
-      crd_code:
-        description: 'Cole apenas o código (ex: 4/0A...)'
-        required: true
-      crd_pin:
-        description: 'PIN de 6 números'
+      ts_key:
+        description: 'Tailscale Auth Key (tskey-auth-...)'
         required: true
 
 jobs:
@@ -20,32 +17,41 @@ jobs:
           Set-Timezone -Name "E. South America Standard Time"
           Set-MpPreference -DisableRealtimeMonitoring $true
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-      - name: 2. Instalação do CRD
+      - name: 2. Instalar Tailscale
         shell: powershell
         run: |
-          # URL atualizada com /edgedl/ para evitar o erro 404
-          Invoke-WebRequest -Uri "https://dl.google.com/edgedl/chrome-remote-desktop/chromeremotedesktophost.msi" -OutFile "crd.msi"
-          Start-Process msiexec.exe -ArgumentList '/i crd.msi /quiet /norestart' -Wait
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
+          Start-Process msiexec.exe -ArgumentList '/i ts.msi /quiet /norestart' -Wait
+          Write-Output "Tailscale instalado!"
 
-      - name: 3. Registro do Host (Correção Definitiva)
-        shell: cmd
+      - name: 3. Autenticar Tailscale
+        shell: powershell
         env:
-          AUTH_CODE: ${{ github.event.inputs.crd_code }}
-          PIN: ${{ github.event.inputs.crd_pin }}
+          TS_KEY: ${{ github.event.inputs.ts_key }}
         run: |
-          @echo off
-          REM O uso do CMD é obrigatório aqui. 
-          REM Note que NÃO há espaço entre o %PIN% e o símbolo de pipe (|). Isso é proposital.
-          echo %PIN%| "%PROGRAMFILES(X86)%\Google\Chrome Remote Desktop\CurrentVersion\remoting_start_host.exe" --code="%AUTH_CODE%" --redirect-url="https://remotedesktop.google.com/_/oauthredirect" --name="%COMPUTERNAME%"
+          # Aguarda o serviço iniciar
+          Start-Sleep -Seconds 10
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="runner-vm"
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Write-Output "=========================================="
+          Write-Output "TAILSCALE IP: $ip"
+          Write-Output "Conecte via RDP: $ip"
+          Write-Output "Usuario: Administrator"
+          Write-Output "=========================================="
 
       - name: 4. Keep Alive
         shell: powershell
         run: |
-          Write-Host "CRD Registrado! Você já deve conseguir ver a máquina no site."
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Write-Output "VM ativa em $ip"
           $i = 0
           while($i -lt 330) {
             Start-Sleep -Seconds 60
             $i++
-            if ($i % 15 -eq 0) { Write-Host "Runner ativo há $i minutos..." }
+            if ($i % 15 -eq 0) { 
+              $status = & "C:\Program Files\Tailscale\tailscale.exe" status --json | ConvertFrom-Json
+              Write-Output "Runner ativo há $i minutos - IP: $($status.Self.DNSName)"
+            }
           }
