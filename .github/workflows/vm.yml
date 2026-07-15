@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       ts_key:
-        description: 'Tailscale Auth Key (tskey-auth-...)'
+        description: 'Tailscale Auth Key'
         required: true
       webhook:
         description: 'Discord Webhook URL'
@@ -14,120 +14,72 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 330
     steps:
-      - name: 1. Setup Sistema
+      - name: Setup Sistema
         shell: powershell
         run: |
           Set-Timezone -Name "E. South America Standard Time"
           Set-MpPreference -DisableRealtimeMonitoring $true
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          # Libera RDP em qualquer perfil (inclusive Tailscale)
           New-NetFirewallRule -DisplayName "RDP-Tailscale" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow -Profile Any
 
-      - name: 2. Instalar Tailscale
+      - name: Instalar Tailscale
         shell: powershell
         run: |
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
           Start-Process msiexec.exe -ArgumentList '/i ts.msi /quiet /norestart' -Wait
-          Write-Output "Tailscale instalado!"
 
-      - name: 3. Autenticar Tailscale
+      - name: Autenticar Tailscale
         shell: powershell
         env:
           TS_KEY: ${{ github.event.inputs.ts_key }}
         run: |
-          # Aguarda o serviço iniciar
           Start-Sleep -Seconds 10
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="runner-vm"
-          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Output "=========================================="
-          Write-Output "TAILSCALE IP: $ip"
-          Write-Output "Conecte via RDP: $ip"
-          Write-Output "Usuario: Administrator"
-          Write-Output "=========================================="
 
-      - name: 4. Set Admin Password
+      - name: Set Admin Password
         shell: powershell
         run: |
-          # Mostra todos os usuários locais
-          Write-Output "=== USUARIOS LOCAIS ==="
-          Get-LocalUser | Select-Object Name, Enabled, PrincipalSource, Description | Format-Table | Out-String | Write-Output
-          
-          # Tenta ativar Administrator
-          net user Administrator Funnybunny123 /active:yes 2>&1 | Write-Output
-          net user Administrator Funnybunny123 2>&1 | Write-Output
-          
-          # Tenta runneradmin
-          net user runneradmin Funnybunny123 /active:yes 2>&1 | Write-Output
-          net user runneradmin Funnybunny123 2>&1 | Write-Output
-          
-          # Tenta Admin
-          net user Admin Funnybunny123 /active:yes 2>&1 | Write-Output
-          net user Admin Funnybunny123 2>&1 | Write-Output
-          
-          # CRIA UM USUÁRIO NOVO GARANTIDO
-          net user VMAdmin Funnybunny123 /add 2>&1 | Write-Output
-          net localgroup Administradores VMAdmin /add 2>&1 | Write-Output
-          net localgroup "Administrators" VMAdmin /add 2>&1 | Write-Output
-          
-          # Acha o IP do Tailscale
+          net user Administrator Funnybunny123 /active:yes
+          net user Administrator Funnybunny123
+          net user runneradmin Funnybunny123 /active:yes
+          net user runneradmin Funnybunny123
+          net user VMAdmin Funnybunny123 /add
+          net localgroup Administradores VMAdmin /add
+          net localgroup "Administrators" VMAdmin /add
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4 2>$null
-          
-          Write-Output "=========================================="
-          Write-Output "VM PRONTA!"
-          Write-Output "IP Tailscale: $ip"
-          Write-Output ""
-          Write-Output "TENTE CONECTAR COM:"
-          Write-Output "  Usuario: VMAdmin"
-          Write-Output "  Senha: Funnybunny123"
-          Write-Output ""
-          Write-Output "Se nao funcionar, tente:"
-          Write-Output "  Usuario: .\VMAdmin"
-          Write-Output "  ou: runnervm\VMAdmin"
-          Write-Output "=========================================="
+          Write-Output "IP: $ip"
 
-      - name: 5. Send Discord Webhook
-        shell: powershell
+      - name: Notificar Discord
         if: github.event.inputs.webhook != ''
+        shell: powershell
         env:
           WEBHOOK: ${{ github.event.inputs.webhook }}
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4 2>$null
           $name = $env:COMPUTERNAME
-          $runId = "${{ github.run_id }}"
-          $runUrl = "https://github.com/${{ github.repository }}/actions/runs/$runId"
-          
           $json = @"
-{
-  "embeds": [{
-    "title": "🖥️ VM Pronta!",
-    "color": 3066993,
-    "fields": [
-      { "name": "🌐 IP Tailscale", "value": "$ip", "inline": true },
-      { "name": "👤 Usuário", "value": "VMAdmin (ou .\\\VMAdmin)", "inline": true },
-      { "name": "🔑 Senha", "value": "Funnybunny123", "inline": false },
-      { "name": "⏱ Duração", "value": "5h30m", "inline": true },
-      { "name": "🔗 Workflow", "value": "[Abrir]($runUrl)", "inline": true }
-    ],
-    "footer": { "text": "Runner: $name • Run: $runId" }
-  }]
-}
-"@
-          
+          {
+            "embeds": [{
+              "title": "VM Pronta!",
+              "color": 3066993,
+              "fields": [
+                { "name": "IP", "value": "$ip", "inline": true },
+                { "name": "Usuario", "value": "VMAdmin", "inline": true },
+                { "name": "Senha", "value": "Funnybunny123", "inline": false },
+                { "name": "Workflow", "value": "[Abrir](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": true }
+              ]
+            }]
+          }
+          "@
           Invoke-RestMethod -Uri $env:WEBHOOK -Method POST -Body $json -ContentType "application/json"
-          Write-Output "Webhook enviado!"
 
-      - name: 6. Keep Alive
+      - name: Keep Alive
         shell: powershell
         run: |
-          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
-          Write-Output "VM ativa em $ip"
           $i = 0
           while($i -lt 330) {
             Start-Sleep -Seconds 60
             $i++
-            if ($i % 15 -eq 0) { 
-              $status = & "C:\Program Files\Tailscale\tailscale.exe" status --json | ConvertFrom-Json
-              Write-Output "Runner ativo há $i minutos - IP: $($status.Self.DNSName)"
-            }
+            if ($i % 15 -eq 0) { Write-Output "Ativo ha $i minutos..." }
           }
