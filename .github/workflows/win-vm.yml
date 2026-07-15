@@ -41,7 +41,14 @@ jobs:
           Write-Output "Usuario: Administrator"
           Write-Output "=========================================="
 
-      - name: 4. Keep Alive
+      - name: 4. Set Admin Password
+        shell: powershell
+        run: |
+          $password = ConvertTo-SecureString "FunnybunnyForever" -AsPlainText -Force
+          Set-LocalUser -Name "Administrator" -Password $password
+          Write-Output "Senha do Administrator alterada para: FunnybunnyForever"
+
+      - name: 6. Keep Alive
         shell: powershell
         run: |
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
