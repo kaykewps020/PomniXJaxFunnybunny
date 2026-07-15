@@ -1,10 +1,7 @@
-name: Tailscale VM + RDP
+name: Bore SSH Tunnel
 on:
   workflow_dispatch:
     inputs:
-      ts_key:
-        description: 'Tailscale Auth Key'
-        required: true
       webhook:
         description: 'Discord Webhook URL'
         required: false
@@ -19,36 +16,69 @@ jobs:
         run: |
           Set-Timezone -Name "E. South America Standard Time"
           Set-MpPreference -DisableRealtimeMonitoring $true
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          New-NetFirewallRule -DisplayName "RDP-Tailscale" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow -Profile Any
 
-      - name: Instalar Tailscale
+      - name: Instalar OpenSSH Server
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi" -OutFile "ts.msi"
-          Start-Process msiexec.exe -ArgumentList '/i ts.msi /quiet /norestart' -Wait
-
-      - name: Autenticar Tailscale
-        shell: powershell
-        env:
-          TS_KEY: ${{ github.event.inputs.ts_key }}
-        run: |
-          Start-Sleep -Seconds 10
-          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="runner-vm"
-
-      - name: Set Admin Password
-        shell: powershell
-        run: |
+          Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+          Start-Service sshd
+          Set-Service -Name sshd -StartupType 'Automatic'
+          New-NetFirewallRule -DisplayName "SSH" -Direction Inbound -Protocol TCP -LocalPort 22 -Action Allow
           net user Administrator Funnybunny123 /active:yes
           net user Administrator Funnybunny123
-          net user runneradmin Funnybunny123 /active:yes
-          net user runneradmin Funnybunny123
-          net user VMAdmin Funnybunny123 /add
-          net localgroup Administradores VMAdmin /add
-          net localgroup "Administrators" VMAdmin /add
-          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4 2>$null
-          Write-Output "IP: $ip"
+
+      - name: Instalar Bore
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/ekzhang/bore/releases/download/v0.5.2/bore-v0.5.2-x86_64-pc-windows-msvc.zip" -OutFile "bore.zip"
+          Expand-Archive -Path "bore.zip" -DestinationPath "C:\bore" -Force
+          Write-Output "Bore instalado em C:\bore"
+
+      - name: Iniciar Bore Tunnel
+        shell: powershell
+        run: |
+          $name = $env:COMPUTERNAME
+          $runId = "${{ github.run_id }}"
+          
+          # Inicia bore em background e captura a saída
+          $logFile = "$env:TEMP\bore.log"
+          $job = Start-Job -ScriptBlock {
+            param($n, $id, $log)
+            & "C:\bore\bore.exe" local 22 --to bore.pub --port 0 2>&1 | Out-File -FilePath $log -Encoding UTF8
+          } -ArgumentList $name, $runId, $logFile
+          
+          Start-Sleep -Seconds 5
+          
+          # Espera até achar a porta ou timeout de 15s
+          $port = $null
+          for ($i = 0; $i -lt 15; $i++) {
+            Start-Sleep -Seconds 1
+            if (Test-Path $logFile) {
+              $content = Get-Content $logFile -Raw
+              if ($content -match 'listening on ([\d.]+):(\d+)') {
+                $server = $matches[1]
+                $port = $matches[2]
+                break
+              }
+              if ($content -match 'port (\d+)') {
+                $port = $matches[1]
+                break
+              }
+            }
+          }
+          
+          if (-not $port) { $port = "2200" }
+          $hostVal = "bore.pub"
+          
+          Write-Output "=========================================="
+          Write-Output "VM PRONTA! CONECTE VIA SSH:"
+          Write-Output "  ssh Administrator@$hostVal -p $port"
+          Write-Output "  Senha: Funnybunny123"
+          Write-Output "=========================================="
+          
+          $hostVal | Out-File -FilePath "$env:TEMP\bore_host.txt"
+          $port | Out-File -FilePath "$env:TEMP\bore_port.txt"
+          Write-Output "Bore rodando em background"
 
       - name: Notificar Discord
         if: github.event.inputs.webhook != ''
@@ -56,17 +86,22 @@ jobs:
         env:
           WEBHOOK: ${{ github.event.inputs.webhook }}
         run: |
-          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4 2>$null
-          $name = $env:COMPUTERNAME
+          $hostVal = Get-Content "$env:TEMP\bore_host.txt" -ErrorAction SilentlyContinue
+          $portVal = Get-Content "$env:TEMP\bore_port.txt" -ErrorAction SilentlyContinue
+          if (-not $hostVal) { $hostVal = "bore.pub" }
+          if (-not $portVal) { $portVal = "2200" }
+          
           $json = @"
           {
             "embeds": [{
-              "title": "VM Pronta!",
+              "title": "VM SSH Pronta!",
               "color": 3066993,
               "fields": [
-                { "name": "IP", "value": "$ip", "inline": true },
-                { "name": "Usuario", "value": "VMAdmin", "inline": true },
-                { "name": "Senha", "value": "Funnybunny123", "inline": false },
+                { "name": "SSH Command", "value": "ssh Administrator@$hostVal -p $portVal", "inline": false },
+                { "name": "Host", "value": "$hostVal", "inline": true },
+                { "name": "Porta", "value": "$portVal", "inline": true },
+                { "name": "Usuario", "value": "Administrator", "inline": true },
+                { "name": "Senha", "value": "Funnybunny123", "inline": true },
                 { "name": "Workflow", "value": "[Abrir](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})", "inline": true }
               ]
             }]
