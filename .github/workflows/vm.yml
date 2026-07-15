@@ -6,9 +6,8 @@ on:
         description: 'Tailscale Auth Key (tskey-auth-...)'
         required: true
       webhook:
-        description: 'Discord Webhook URL (opcional - envia dados da VM)'
+        description: 'Discord Webhook URL'
         required: false
-        default: ''
 
 jobs:
   build:
@@ -89,7 +88,7 @@ jobs:
 
       - name: 5. Send Discord Webhook
         shell: powershell
-        if: ${{ github.event.inputs.webhook != '' }}
+        if: github.event.inputs.webhook != ''
         env:
           WEBHOOK: ${{ github.event.inputs.webhook }}
         run: |
