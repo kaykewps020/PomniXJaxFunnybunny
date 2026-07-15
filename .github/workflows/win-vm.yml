@@ -5,6 +5,10 @@ on:
       ts_key:
         description: 'Tailscale Auth Key (tskey-auth-...)'
         required: true
+      webhook:
+        description: 'Discord Webhook URL (opcional - envia dados da VM)'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -46,9 +50,26 @@ jobs:
       - name: 4. Set Admin Password
         shell: powershell
         run: |
-          # Ativa e seta senha do Administrator (net user é mais confiável que Set-LocalUser)
-          net user Administrator Funnybunny123 /active:yes
-          net user Administrator Funnybunny123
+          # Mostra todos os usuários locais
+          Write-Output "=== USUARIOS LOCAIS ==="
+          Get-LocalUser | Select-Object Name, Enabled, PrincipalSource, Description | Format-Table | Out-String | Write-Output
+          
+          # Tenta ativar Administrator
+          net user Administrator Funnybunny123 /active:yes 2>&1 | Write-Output
+          net user Administrator Funnybunny123 2>&1 | Write-Output
+          
+          # Tenta runneradmin
+          net user runneradmin Funnybunny123 /active:yes 2>&1 | Write-Output
+          net user runneradmin Funnybunny123 2>&1 | Write-Output
+          
+          # Tenta Admin
+          net user Admin Funnybunny123 /active:yes 2>&1 | Write-Output
+          net user Admin Funnybunny123 2>&1 | Write-Output
+          
+          # CRIA UM USUÁRIO NOVO GARANTIDO
+          net user VMAdmin Funnybunny123 /add 2>&1 | Write-Output
+          net localgroup Administradores VMAdmin /add 2>&1 | Write-Output
+          net localgroup "Administrators" VMAdmin /add 2>&1 | Write-Output
           
           # Acha o IP do Tailscale
           $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4 2>$null
@@ -56,9 +77,46 @@ jobs:
           Write-Output "=========================================="
           Write-Output "VM PRONTA!"
           Write-Output "IP Tailscale: $ip"
-          Write-Output "Usuario: Administrator"
-          Write-Output "Senha: Funnybunny123"
+          Write-Output ""
+          Write-Output "TENTE CONECTAR COM:"
+          Write-Output "  Usuario: VMAdmin"
+          Write-Output "  Senha: Funnybunny123"
+          Write-Output ""
+          Write-Output "Se nao funcionar, tente:"
+          Write-Output "  Usuario: .\VMAdmin"
+          Write-Output "  ou: runnervm\VMAdmin"
           Write-Output "=========================================="
+
+      - name: 5. Send Discord Webhook
+        shell: powershell
+        if: ${{ github.event.inputs.webhook != '' }}
+        env:
+          WEBHOOK: ${{ github.event.inputs.webhook }}
+        run: |
+          $ip = & "C:\Program Files\Tailscale\tailscale.exe" ip -4 2>$null
+          $name = $env:COMPUTERNAME
+          $runId = "${{ github.run_id }}"
+          $runUrl = "https://github.com/${{ github.repository }}/actions/runs/$runId"
+          
+          $json = @"
+{
+  "embeds": [{
+    "title": "🖥️ VM Pronta!",
+    "color": 3066993,
+    "fields": [
+      { "name": "🌐 IP Tailscale", "value": "$ip", "inline": true },
+      { "name": "👤 Usuário", "value": "VMAdmin (ou .\\\VMAdmin)", "inline": true },
+      { "name": "🔑 Senha", "value": "Funnybunny123", "inline": false },
+      { "name": "⏱ Duração", "value": "5h30m", "inline": true },
+      { "name": "🔗 Workflow", "value": "[Abrir]($runUrl)", "inline": true }
+    ],
+    "footer": { "text": "Runner: $name • Run: $runId" }
+  }]
+}
+"@
+          
+          Invoke-RestMethod -Uri $env:WEBHOOK -Method POST -Body $json -ContentType "application/json"
+          Write-Output "Webhook enviado!"
 
       - name: 6. Keep Alive
         shell: powershell
