@@ -18,6 +18,8 @@ jobs:
           Set-MpPreference -DisableRealtimeMonitoring $true
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          # Libera RDP em qualquer perfil (inclusive Tailscale)
+          New-NetFirewallRule -DisplayName "RDP-Tailscale" -Direction Inbound -Protocol TCP -LocalPort 3389 -Action Allow -Profile Any
 
       - name: 2. Instalar Tailscale
         shell: powershell
